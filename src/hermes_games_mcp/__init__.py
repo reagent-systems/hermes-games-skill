@@ -1,1 +1,1 @@
-"""Hermes waiting-games MCP server."""
+"""hermes-games-mcp — see plugin.py."""
