@@ -15,6 +15,10 @@ register() {
 LABELS=()
 BINS=()
 
+# Write our PID so Hermes hooks can SIGSTOP/SIGCONT us
+echo $$ > /tmp/hermes_games_menu.pid
+trap 'rm -f /tmp/hermes_games_menu.pid' EXIT
+
 register "NetHack" "nethack"
 register "Dungeon Crawl (crawl)" "crawl"
 register "nInvaders" "ninvaders"
