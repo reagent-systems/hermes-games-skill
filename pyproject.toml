@@ -1,0 +1,17 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "hermes-games-mcp"
+version = "0.1.0"
+description = "MCP server: open a terminal games menu while Hermes works."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = ["mcp>=1.2.0"]
+
+[project.scripts]
+hermes-games-mcp = "hermes_games_mcp.server:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/hermes_games_mcp"]
