@@ -1,14 +1,45 @@
 #!/usr/bin/env bash
-# Terminal games picker — only lists binaries found on PATH.
+# Terminal games picker — lists binaries found on PATH or bundled in ../../bin.
 set -u
 
 MENU_TITLE="Waiting games (Hermes)"
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BUNDLED_BIN_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)/bin"
+
+# Detect platform → bundled bin subdir.
+ARCH_DIR=""
+case "$(uname -s)" in
+  Linux)
+    case "$(uname -m)" in
+      x86_64|amd64) ARCH_DIR="linux-amd64" ;;
+      aarch64|arm64) ARCH_DIR="linux-arm64" ;;
+    esac
+    ;;
+  Darwin)
+    case "$(uname -m)" in
+      x86_64|amd64) ARCH_DIR="darwin-amd64" ;;
+      arm64) ARCH_DIR="darwin-arm64" ;;
+    esac
+    ;;
+  MINGW*|MSYS*|CYGWIN*) ARCH_DIR="windows-amd64" ;;
+esac
+
+# register adds an entry if the binary is on PATH or bundled for this platform.
 register() {
   local label="$1" bin="$2"
   if command -v "$bin" >/dev/null 2>&1; then
     LABELS+=("$label")
     BINS+=("$bin")
+    return
+  fi
+  if [[ -n "$ARCH_DIR" ]]; then
+    local bundled="$BUNDLED_BIN_ROOT/$ARCH_DIR/$bin"
+    [[ "$ARCH_DIR" == "windows-amd64" ]] && bundled="${bundled}.exe"
+    if [[ -x "$bundled" || -f "$bundled" ]]; then
+      LABELS+=("$label")
+      BINS+=("$bundled")
+    fi
   fi
 }
 
@@ -19,6 +50,7 @@ BINS=()
 echo $$ > /tmp/hermes_games_menu.pid
 trap 'rm -f /tmp/hermes_games_menu.pid' EXIT
 
+register "Tron lightcycles" "tron"
 register "NetHack" "nethack"
 register "Dungeon Crawl (crawl)" "crawl"
 register "nInvaders" "ninvaders"

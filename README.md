@@ -90,9 +90,32 @@ Or point `command` at `.venv/bin/hermes-games-mcp` with `"args": []` after a loc
 
 | Name | Role |
 |------|------|
-| `open_waiting_games_menu` | Opens a new terminal running the bundled bash menu (`games_menu.sh`); only lists games whose binaries exist on `PATH`. |
+| `open_waiting_games_menu` | Opens a new terminal running the bundled bash menu (`games_menu.sh`); lists games whose binaries are on `PATH` or bundled in `bin/<os>-<arch>/`. |
 
 Headless SSH sessions and chat-only gateways may not be able to open a GUI terminal; the tool returns a short message suggesting a manual `bash …/games_menu.sh` command when auto-launch fails.
+
+## Bundled games
+
+Some games ship in this repo so they're available without a separate install. The menu script auto-detects platform via `uname` and looks in `bin/<os>-<arch>/`.
+
+| Game | Source | Platforms bundled |
+|------|--------|-------------------|
+| Tron lightcycles | Single human vs three personality-driven bots (aggressor, wall-hugger, survivor). Built in Go with `tcell`. | linux-amd64, linux-arm64, darwin-amd64, darwin-arm64, windows-amd64 |
+
+Other games in `games_menu.sh` (NetHack, nSnake, Greed, etc.) are *not* bundled — install them through your package manager (`brew install ninvaders`, `apt install nsnake`, etc.) and they'll show up automatically.
+
+### Adding a bundled binary
+
+1. Cross-compile or grab pre-built binaries for the platforms you want to support. For Go projects:
+   ```bash
+   for target in linux-amd64 linux-arm64 darwin-amd64 darwin-arm64 windows-amd64; do
+     GOOS="${target%-*}" GOARCH="${target#*-}" \
+       go build -o "/path/to/hermes-games-skill/bin/$target/<binary>" .
+   done
+   ```
+   (Add `.exe` to the windows-amd64 output name.)
+2. Add a `register "<Display name>" "<binary>"` line to `src/hermes_games_mcp/games_menu.sh`.
+3. Commit the binaries.
 
 ## License
 
