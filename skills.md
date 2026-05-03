@@ -1,10 +1,10 @@
 ---
 name: hermes-waiting-games
 description: >-
-  Long desktop coding runs for Hermes Agent (Nous Research): call MCP tool
-  open_waiting_games_menu on hermes-waiting-games so the user gets a terminal
-  game picker in a new window. Skip on headless or chat-only sessions.
+  Hermes plugin: play tron in a side Terminal window while waiting for Hermes
+  to think; auto-pauses when Hermes finishes. Symlink plugin/ into
+  ~/.hermes/plugins/waiting-games and enable in config. macOS only.
 ---
 
-Hermes: register stdio MCP **`hermes-waiting-games`**, command e.g. `uv run hermes-games-mcp` from this repo (after `uv pip install -e .`).
-Before long desktop work, invoke **`open_waiting_games_menu`**; behavior is defined by the tool, not this file.
+See [README.md](README.md) and [AGENTS.md](AGENTS.md). All logic lives in
+[`plugin/__init__.py`](plugin/__init__.py).

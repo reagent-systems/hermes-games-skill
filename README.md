@@ -1,122 +1,83 @@
-# hermes-games-mcp
+# waiting-games
 
-Small [Model Context Protocol](https://modelcontextprotocol.io/) (stdio) server for [Hermes Agent](https://hermes-agent.nousresearch.com/) (and any other MCP client): it exposes **`open_waiting_games_menu`**, which opens a **new terminal** with a **numbered menu** of terminal games found on `PATH`. Use it during long desktop coding runs so the person waiting can play something without blocking the agent.
+A Hermes plugin that plays tron-lightcycles in a side Terminal window
+**while you wait for Hermes to think**, and pauses it when Hermes finishes
+so you can read the response.
 
-See [`skills.md`](skills.md) for the minimal Hermes skill pointer.
+## What it does
+
+Two hooks fire on the Hermes CLI lifecycle:
+
+| Hook            | When                          | Action                                              |
+|-----------------|-------------------------------|-----------------------------------------------------|
+| `pre_llm_call`  | You hit enter, Hermes thinks  | `SIGCONT` existing tron, or launch a new one        |
+| `post_llm_call` | Hermes finished responding    | `SIGSTOP` tron — frozen until your next message     |
+
+The same tron process persists across turns. Die or quit tron → next turn
+launches a fresh one. The launched tron lives in its own `Terminal.app`
+window (macOS only).
+
+## Layout
+
+```
+.
+├── plugin/                   ← the plugin (Hermes loads this)
+│   ├── __init__.py           ← all logic: hooks, launcher, signal helpers
+│   └── plugin.yaml           ← name, version, hook list
+├── bin/<arch>/tron           ← prebuilt tron binaries (vendored)
+├── README.md
+├── AGENTS.md                 ← orientation for AI agents working in this repo
+└── skills.md                 ← short skill description for Hermes catalog
+```
+
+There is no Python package install, no MCP server, no build step.
+Hermes loads the plugin from a directory under `~/.hermes/plugins/`.
 
 ## Install
 
-From the repository root (requires Python 3.10+):
+Symlink the `plugin/` directory into the Hermes plugins folder under the
+plugin name:
 
 ```bash
-uv venv .venv
-source .venv/bin/activate   # Windows: .venv\Scripts\activate
-uv pip install -e .
+ln -s "$(pwd)/plugin" ~/.hermes/plugins/waiting-games
 ```
 
-Smoke test:
-
-```bash
-hermes-games-mcp --help 2>/dev/null || true   # stdio server; may print nothing — clients spawn it
-python -c "from hermes_games_mcp.server import open_waiting_games_menu; print('import ok')"
-```
-
-## Hermes Agent MCP config
-
-Hermes reads MCP servers from **`~/.hermes/config.yaml`** under `mcp_servers`. Official reference: [MCP config reference](https://hermes-agent.nousresearch.com/docs/reference/mcp-config-reference/) and [Use MCP with Hermes](https://hermes-agent.nousresearch.com/docs/guides/use-mcp-with-hermes/).
-
-Merge a block like this (replace the path with your clone of this repo):
+Enable in `~/.hermes/config.yaml`:
 
 ```yaml
-mcp_servers:
-  waiting_games:
-    command: "uv"
-    args:
-      - "run"
-      - "--directory"
-      - "/absolute/path/to/hermes-games-skill"
-      - "hermes-games-mcp"
+plugins:
+  enabled:
+    - waiting-games
 ```
 
-If you prefer a fixed virtualenv (no `uv run`), use the installed console script:
+Restart Hermes (`hermes restart`). The next turn will pop a Terminal window
+running tron.
 
-```yaml
-mcp_servers:
-  waiting_games:
-    command: "/absolute/path/to/hermes-games-skill/.venv/bin/hermes-games-mcp"
-    args: []
-```
+## How it coordinates with the game process
 
-Optional: restrict utility MCP wrappers on this server:
+- The plugin's `_launch_tron` runs `osascript` → `Terminal.app do script "exec bash -lc <inner>"`
+- `<inner>` writes the subshell PID to `/tmp/hermes_games_menu.pid` then `exec`s tron
+- The plugin signals that PID's process group (`SIGCONT`/`SIGSTOP`) via `os.killpg`
+- That same PID file is also referenced by Claude Code hooks in `~/.claude/settings.json`,
+  so both runtimes coordinate on a single game instance.
 
-```yaml
-mcp_servers:
-  waiting_games:
-    command: "/absolute/path/to/hermes-games-skill/.venv/bin/hermes-games-mcp"
-    args: []
-    tools:
-      include: [open_waiting_games_menu]
-      resources: false
-      prompts: false
-```
+## Pitfalls / things to know
 
-After editing config, reload MCP in Hermes (see docs): run **`/reload-mcp`**.
+1. **Plugin code is loaded once at Hermes startup.** Edit the plugin → run
+   `hermes restart` (in a *separate* terminal — don't kill your active
+   session). Restarting from inside a Hermes turn kills the gateway you're
+   talking to.
+2. **macOS only right now.** Linux/Windows would need a different terminal
+   launcher in `_launch_tron` (e.g. `gnome-terminal --` or `wt.exe`).
+3. **`tron` binary must be executable.** If you re-clone or re-extract:
+   `chmod +x bin/darwin-arm64/tron`.
+4. **PID-file race.** A *fresh* launch needs a beat for the inner shell to
+   write its PID. `_on_post_llm_call` polls for up to ~1s before giving up.
+5. **`Z+` zombies after SIGSTOP** were the symptom of an earlier, broken
+   wrapper-shell setup. The current `exec`-based launcher avoids them.
 
-Hermes exposes server tools with a prefix of the form **`mcp_<server_key>_<tool>`** (see [tool naming](https://hermes-agent.nousresearch.com/docs/reference/mcp-config-reference/)). With the key `waiting_games`, the tool appears as **`mcp_waiting_games_open_waiting_games_menu`**.
+## Provenance
 
-## Cursor / Claude Desktop–style `mcp.json`
-
-If another MCP host uses a JSON config, add:
-
-```json
-{
-  "mcpServers": {
-    "hermes-waiting-games": {
-      "command": "uv",
-      "args": [
-        "run",
-        "--directory",
-        "/absolute/path/to/hermes-games-skill",
-        "hermes-games-mcp"
-      ]
-    }
-  }
-}
-```
-
-Or point `command` at `.venv/bin/hermes-games-mcp` with `"args": []` after a local editable install.
-
-## Tool
-
-| Name | Role |
-|------|------|
-| `open_waiting_games_menu` | Opens a new terminal running the bundled bash menu (`games_menu.sh`); lists games whose binaries are on `PATH` or bundled in `bin/<os>-<arch>/`. |
-
-Headless SSH sessions and chat-only gateways may not be able to open a GUI terminal; the tool returns a short message suggesting a manual `bash …/games_menu.sh` command when auto-launch fails.
-
-## Bundled games
-
-Some games ship in this repo so they're available without a separate install. The menu script auto-detects platform via `uname` and looks in `bin/<os>-<arch>/`.
-
-| Game | Source | Platforms bundled |
-|------|--------|-------------------|
-| Tron lightcycles | Single human vs three personality-driven bots (aggressor, wall-hugger, survivor). Built in Go with `tcell`. | linux-amd64, linux-arm64, darwin-amd64, darwin-arm64, windows-amd64 |
-
-Other games in `games_menu.sh` (NetHack, nSnake, Greed, etc.) are *not* bundled — install them through your package manager (`brew install ninvaders`, `apt install nsnake`, etc.) and they'll show up automatically.
-
-### Adding a bundled binary
-
-1. Cross-compile or grab pre-built binaries for the platforms you want to support. For Go projects:
-   ```bash
-   for target in linux-amd64 linux-arm64 darwin-amd64 darwin-arm64 windows-amd64; do
-     GOOS="${target%-*}" GOARCH="${target#*-}" \
-       go build -o "/path/to/hermes-games-skill/bin/$target/<binary>" .
-   done
-   ```
-   (Add `.exe` to the windows-amd64 output name.)
-2. Add a `register "<Display name>" "<binary>"` line to `src/hermes_games_mcp/games_menu.sh`.
-3. Commit the binaries.
-
-## License
-
-Match the rest of your hackathon or repo policy; the upstream Hermes ecosystem is described on [Nous Research](https://www.nousresearch.com/) and the [Hermes Agent site](https://hermes-agent.nousresearch.com/).
+Originally a Hermes MCP server that exposed an `open_waiting_games_menu`
+tool. The MCP layer was removed once the plugin became fully autonomous —
+hooks alone are enough; no agent action is needed to start a game.
